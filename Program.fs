@@ -27,9 +27,9 @@ let resultsHandler (html:string) (targetPrice:string)=
     |> Seq.filter (fun s -> s.Descendants(0).Count() = 0)
     |> Seq.filter (fun s -> (innerText s).Contains(targetPrice))
     |> Seq.map (fun n -> 
-        let resPath, targetItem = (buildPath (parent n) "" "" "pric") in
-        resPath)
-    |> Array.ofSeq
+        (buildPath (parent n) "" "" "pric"))
+    |> Seq.filter (fun (path, pricePath) -> pricePath <> "")
+    |> Seq.head
 
 
 let resultsSelector (html:string) (path:string) =
@@ -45,7 +45,6 @@ let main argv =
     //let html = Http.RequestString("https://www.amazon.com/Shin-Megami-Tensei-Nocturne-playstation-2/dp/B00024W1U6") in
     //printfn "%s" html    
     let html = System.IO.File.ReadAllText "test_input.html" in
-    let results = resultsHandler html "19.45" in
-    //printfn "%s" results.[0]
-    printfn "%s" (resultsSelector html results.[0])
+    let path, priceSubpath = resultsHandler html "19.45" in
+    printfn "%s" (resultsSelector html path)
     0

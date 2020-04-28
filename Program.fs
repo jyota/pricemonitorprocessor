@@ -20,12 +20,12 @@ let rec buildPath (el:HtmlAgilityPack.HtmlNode) (currstr:string) (hitstr:string)
   with Failure _ -> ("/" + currstr, hitstr)
 
 
-let resultsHandler (html:string) =
+let resultsHandler (html:string) (targetPrice:string)=
     html
     |> createDoc
     |> fun n -> n.Descendants(0)
     |> Seq.filter (fun s -> s.Descendants(0).Count() = 0)
-    |> Seq.filter (fun s -> (innerText s).Contains("19.45"))
+    |> Seq.filter (fun s -> (innerText s).Contains(targetPrice))
     |> Seq.map (fun n -> 
         let resPath, targetItem = (buildPath (parent n) "" "" "pric") in
         resPath)
@@ -45,7 +45,7 @@ let main argv =
     //let html = Http.RequestString("https://www.amazon.com/Shin-Megami-Tensei-Nocturne-playstation-2/dp/B00024W1U6") in
     //printfn "%s" html    
     let html = System.IO.File.ReadAllText "test_input.html" in
-    let results = resultsHandler html in
+    let results = resultsHandler html "19.45" in
     //printfn "%s" results.[0]
     printfn "%s" (resultsSelector html results.[0])
     0

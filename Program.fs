@@ -17,7 +17,9 @@ let rec buildPath (el:HtmlAgilityPack.HtmlNode) (currstr:string) (hitstr:string)
           else buildPath thisParent path "" findstr
         else 
           buildPath thisParent path hitstr findstr
-  with Failure _ -> ("/" + currstr, hitstr)
+  with
+  | :? System.NullReferenceException -> ("/" + currstr, hitstr)
+  | _ -> reraise()
 
 
 let resultsHandler (html:string) (targetPrice:string)=

@@ -1,5 +1,3 @@
-// Learn more about F# at http://fsharp.org
-
 open System
 open FSharp.Data
 open System.Linq

@@ -47,8 +47,8 @@ let element name (node : HtmlNode) =
 let elements name (node : HtmlNode) = 
     node.Elements name
 
-let descendants name (node : HtmlNode) = 
-    node.Descendants (name: string)
+let descendants (depth:int) (node : HtmlNode) = 
+    node.Descendants depth
 
 let descendantsAndSelf name (node : HtmlNode) = 
     node.DescendantsAndSelf name

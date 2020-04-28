@@ -23,8 +23,8 @@ let rec buildPath (el:HtmlAgilityPack.HtmlNode) (currstr:string) (hitstr:string)
 let resultsHandler (html:string) (targetPrice:string)=
     html
     |> createDoc
-    |> fun n -> n.Descendants(0)
-    |> Seq.filter (fun s -> s.Descendants(0).Count() = 0)
+    |> descendants 0
+    |> Seq.filter (fun s -> not s.HasChildNodes)
     |> Seq.filter (fun s -> (innerText s).Contains(targetPrice))
     |> Seq.map (fun n -> 
         (buildPath (parent n) "" "" "pric"))
@@ -33,6 +33,7 @@ let resultsHandler (html:string) (targetPrice:string)=
 
 
 let resultsSelector (html:string) (path:string) =
+    printfn "%s" path
     html
     |> createDoc
     |> fun n -> n.SelectNodes(path)
@@ -43,7 +44,8 @@ let resultsSelector (html:string) (path:string) =
 [<EntryPoint>]
 let main argv =
     //let html = Http.RequestString("https://www.amazon.com/Shin-Megami-Tensei-Nocturne-playstation-2/dp/B00024W1U6") in
-    //printfn "%s" html    
+    //let html = Http.RequestString("https://www.walmart.com/ip/Hamilton-Beach-6-Speed-Hand-Mixer-with-Snap-On-Case-Black/21125971") in
+    //let path, priceSubpath = resultsHandler html "14.95" in
     let html = System.IO.File.ReadAllText "test_input.html" in
     let path, priceSubpath = resultsHandler html "19.45" in
     printfn "%s" (resultsSelector html path)

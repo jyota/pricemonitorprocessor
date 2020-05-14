@@ -10,7 +10,7 @@ open PriceMonitorProcessor.Models
 // Database
 [<Literal>]
 let PricingMonitorDbConnectionString = "Host=127.0.0.1;Port=5433;Username=sa;Password=data1;Database=pricing_monitor_db"
-type PricingMonitorDb = NpgsqlConnection<PricingMonitorDbConnectionString, ReuseProvidedTypes = true>
+type PricingMonitorDb = NpgsqlConnection<PricingMonitorDbConnectionString>
 
 
 let rec buildPath (el:HtmlAgilityPack.HtmlNode) (currstr:string) (hitstr:string) (findstr:string) = 
@@ -61,26 +61,46 @@ let main argv =
     0
 *)
 
-let getAllJobs = PricingMonitorDb.CreateCommand<"SELECT id, url, target_text FROM intake.url_target">
+let getMonitorRequestActions urlTargetId = 
+  use cmd = PricingMonitorDb.CreateCommand<"
+                  SELECT id, action_id, action_trigger_id, action_trigger_threshold, threshold_type_id, action_target_text
+                  FROM intake.url_target_actions
+                  WHERE url_target_id = @url_target_id">(PricingMonitorDbConnectionString)
+  let t = cmd.Execute(url_target_id = urlTargetId)
+  t |> List.map (fun r -> {Id = r.id; ActionId = r.action_id; ActionTriggerId = r.action_trigger_id; 
+                          ActionTriggerThreshold = r.action_trigger_threshold; ThresholdTypeId = r.threshold_type_id;
+                          ActionTargetText = r.action_target_text})
+    |> Array.ofSeq
 
-let mapMonitorRequest (monitorRequest : PricingMonitorDb.``id:Int64, target_text:String, url:String``) = 
-  { Id = monitorRequest.id; TargetText = monitorRequest.target_text; Url = monitorRequest.url }
+let getAllJobs = 
+  use cmd = PricingMonitorDb.CreateCommand<"
+                  SELECT id, url, target_price, requesting_user_id
+                  FROM intake.url_target">(PricingMonitorDbConnectionString)
+  let t = cmd.Execute()
+  t |> List.map (fun r -> {Id = r.id; Url = r.url; TargetPrice = r.target_price; RequestingUserId = r.requesting_user_id;
+                          MonitorRequestActions = (getMonitorRequestActions r.id)})
 
-
-let getJobsToProcess = 
-  use cmd = getAllJobs PricingMonitorDbConnectionString
-  let res = cmd.Execute() 
-  res |> List.map mapMonitorRequest
-
+(*  if t.Length > 0
+    then
+      t
+      |> List.map (fun r -> 
+          use actionsCmd = PricingMonitorDb.CreateCommand<"
+                                SELECT id, action_id, action_trigger_id, action_trigger_threshold,
+                                       threshold_type_id, action_target_text
+                                FROM intake.url_target_actions 
+                                WHERE url_target_id = @url_target_id">(PricingMonitorDbConnectionString)
+          let tActions = actionsCmd.Execute(url_target_id = r.id)
+          r)
+*)
 
 let handleJob (jobData : MonitorRequest)= 
   async {
-    printfn "\nURL: %s\nTarget: %s\n" jobData.Url jobData.TargetText
+    printfn "\nURL: %s\nTarget: %f\nFirst alert target: %s\n" jobData.Url jobData.TargetPrice jobData.MonitorRequestActions.[0].ActionTargetText
   }
 
 [<EntryPoint>]
 let main argv =
-    getJobsToProcess
+    getAllJobs
     |> List.map handleJob
     |> Async.Parallel
     |> Async.Ignore

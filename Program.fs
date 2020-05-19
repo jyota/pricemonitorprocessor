@@ -29,7 +29,7 @@ let rec buildPath (el:HtmlAgilityPack.HtmlNode) (currstr:string) (hitstr:string)
   | _ -> reraise()
 
 
-let resultsHandler (html:string) (targetPrice:string)=
+let valueTargetHandler (html:string) (targetPrice:string)=
     html
     |> createDoc
     |> descendants 0
@@ -40,14 +40,28 @@ let resultsHandler (html:string) (targetPrice:string)=
     |> Seq.filter (fun (path, pricePath) -> pricePath <> "")
     |> Seq.head
 
-
 let resultsSelector (html:string) (path:string) =
-    printfn "%s" path
     html
     |> createDoc
     |> fun n -> n.SelectNodes(path)
     |> fun n -> n.First()
     |> innerText
+
+
+type ScrapedPathInfo = 
+  {
+    Path : string
+    PriceSubPath : string
+    FoundPrice : bool
+  }
+
+let scrapePriceURL (url:string) (targetPrice:string) =
+  // let html = Http.RequestString(url)
+  // Currently using local test file to avoid hitting remote servers too much
+  let html = System.IO.File.ReadAllText "test_input.html"
+  let path, priceSubPath = valueTargetHandler html targetPrice 
+  let foundPrice = resultsSelector html path
+  {Path = path; PriceSubPath = priceSubPath; FoundPrice = not (isNull foundPrice)}
 
 (*
 [<EntryPoint>]
@@ -80,22 +94,14 @@ let getAllJobs =
   t |> List.map (fun r -> {Id = r.id; Url = r.url; TargetPrice = r.target_price; RequestingUserId = r.requesting_user_id;
                           MonitorRequestActions = (getMonitorRequestActions r.id)})
 
-(*  if t.Length > 0
-    then
-      t
-      |> List.map (fun r -> 
-          use actionsCmd = PricingMonitorDb.CreateCommand<"
-                                SELECT id, action_id, action_trigger_id, action_trigger_threshold,
-                                       threshold_type_id, action_target_text
-                                FROM intake.url_target_actions 
-                                WHERE url_target_id = @url_target_id">(PricingMonitorDbConnectionString)
-          let tActions = actionsCmd.Execute(url_target_id = r.id)
-          r)
-*)
 
-let handleJob (jobData : MonitorRequest)= 
+let handleJob (jobData : MonitorRequest) = 
   async {
-    printfn "\nURL: %s\nTarget: %f\nFirst alert target: %s\n" jobData.Url jobData.TargetPrice jobData.MonitorRequestActions.[0].ActionTargetText
+    let scrapedInfo = scrapePriceURL jobData.Url (string jobData.TargetPrice)
+    if scrapedInfo.FoundPrice then
+      printfn "\nURL: %s\nTarget: %f\nPath: %s\nFound price %b\n" jobData.Url jobData.TargetPrice scrapedInfo.Path scrapedInfo.FoundPrice
+    else
+      printfn "\nDidn't find price\n"
   }
 
 [<EntryPoint>]

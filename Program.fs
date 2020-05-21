@@ -62,18 +62,7 @@ let scrapePriceURL (url:string) (targetPrice:string) =
   let path, priceSubPath = valueTargetHandler html targetPrice 
   let foundPrice = resultsSelector html path
   {Path = path; PriceSubPath = priceSubPath; FoundPrice = not (isNull foundPrice)}
-
-(*
-[<EntryPoint>]
-let main argv =
-    //let html = Http.RequestString("https://www.amazon.com/Shin-Megami-Tensei-Nocturne-playstation-2/dp/B00024W1U6") in
-    let html = Http.RequestString("https://shop.lululemon.com/p/women-pants/Align-Pant-2/_/prod2020012?color=42629") in
-    let path, priceSubpath = resultsHandler html "98.00" in
-    //let html = System.IO.File.ReadAllText "test_input.html" in
-    //let path, priceSubpath = resultsHandler html "19.45" in
-    printfn "%s" (resultsSelector html path)
-    0
-*)
+   
 
 let insertUrl (url : string) (conn : Npgsql.NpgsqlConnection) (tx : Npgsql.NpgsqlTransaction) =
     use cmd = new NpgsqlCommand<"
@@ -123,6 +112,16 @@ let insertPriceHistory (monitor_id : int64) (price : decimal) (conn : Npgsql.Npg
     let t = cmd.Execute(price = price, monitor_id = monitor_id)
     t.Head
 
+let clearIntakeData (monitor_request_id : int64) (conn : Npgsql.NpgsqlConnection) (tx : Npgsql.NpgsqlTransaction) =
+    use cmd = new NpgsqlCommand<"
+        DELETE FROM intake.url_target_actions WHERE url_target_id = @request_id;
+        ", PricingMonitorDbConnectionString>(conn, tx)
+    ignore <| cmd.Execute(request_id = monitor_request_id)
+    use cmd = new NpgsqlCommand<"
+        DELETE FROM intake.url_target WHERE id = @request_id;
+        ", PricingMonitorDbConnectionString>(conn, tx)
+    ignore <| cmd.Execute(request_id = monitor_request_id)
+
 let getDomPathTypeId (name : string) (conn : Npgsql.NpgsqlConnection) (tx : Npgsql.NpgsqlTransaction) = 
   use cmd = new NpgsqlCommand<"
         SELECT id FROM md.target_types
@@ -168,6 +167,7 @@ let monitorIntake (monitorRequest : MonitorRequest) (path : string) (price : dec
 
     // If monitor was not here before, insert first price into it's history
     ignore <| if mt.Length = 0 then insertPriceHistory monitorId price conn tx else int64 0
+    clearIntakeData monitorRequest.Id conn tx
     tx.Commit()
     true
 
@@ -203,11 +203,61 @@ let handleJob (jobData : MonitorRequest) =
       printfn "\nDidn't find price\n"
   }
 
+let scrapeForPriceAtURL (url:string) (path:string) =
+  // let html = Http.RequestString(url)
+  // Currently using local test file to avoid hitting remote servers too much
+  let html = System.IO.File.ReadAllText "test_input.html"
+  let priceString = resultsSelector html path
+  decimal (Seq.fold (fun (str: string) chr -> str.Replace(chr, ' ')) priceString "$")
+
+let handleMonitorScrape (monitor : MonitorBase) = 
+  async {
+    let scrapedPrice = scrapeForPriceAtURL monitor.Url monitor.Path
+    use conn = new Npgsql.NpgsqlConnection(PricingMonitorDbConnectionString)
+    conn.Open()
+    use tx = conn.BeginTransaction()
+    ignore <| insertPriceHistory monitor.Id scrapedPrice conn tx
+    tx.Commit()
+  }
+
+let getAllMonitors = 
+  use cmd = PricingMonitorDb.CreateCommand<"
+                SELECT 
+                    m.id,
+                    u.url,
+                    dp.path
+                FROM md.monitors m
+                JOIN md.urls u ON m.url_id = m.id
+                JOIN md.monitors_dom_paths mdp ON mdp.monitor_id = m.id 
+                JOIN md.target_types tt ON tt.id = mdp.dom_path_id 
+                JOIN md.dom_paths dp ON dp.id = mdp.dom_path_id
+                WHERE m.enabled
+                AND tt.name = 'Price';">(PricingMonitorDbConnectionString)
+  let t = cmd.Execute()
+  t |> List.map (fun r -> {Id = r.id; Url = r.url; Path = r.path})
+
+
 [<EntryPoint>]
 let main argv =
-    getAllJobs
-    |> List.map handleJob
-    |> Async.Parallel
-    |> Async.Ignore
-    |> Async.RunSynchronously
+    if argv.Length > 0 then
+        match argv.[0] with 
+         | "--intake" -> 
+                getAllJobs
+                |> List.map handleJob
+                |> Async.Parallel
+                |> Async.Ignore
+                |> Async.RunSynchronously
+                0
+         | "--scrape" ->
+                getAllMonitors
+                |> List.map handleMonitorScrape
+                |> Async.Parallel
+                |> Async.Ignore 
+                |> Async.RunSynchronously
+                0
+         | _ -> 
+            printfn "\nPlease pass --intake or --scrape argument.\n"
+            0
+    else 
+    printfn "\nPlease pass --intake or --scrape argument.\n"
     0

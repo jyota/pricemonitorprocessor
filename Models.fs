@@ -22,3 +22,12 @@ type MonitorRequest =
         RequestingUserId : int64
         MonitorRequestActions : array<MonitorRequestAction>
     }
+
+
+[<CLIMutable>]
+type MonitorBase =
+    {
+        Id : int64
+        Url : string
+        Path : string
+    }
